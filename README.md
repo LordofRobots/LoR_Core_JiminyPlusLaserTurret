@@ -1,6 +1,8 @@
 # LoR_Core_JiminyPlusLaserTurret
 This project holds all configurations for the MiniBot named jiminy plus a laser turret attachment.
 
+Board : ESP32 dev module
+
 This code is for an ESP32-controlled robot equipped with a mecanum drive and a laser turret, both of which are controlled by a PS4 controller.
 
 Key elements of this code are:
