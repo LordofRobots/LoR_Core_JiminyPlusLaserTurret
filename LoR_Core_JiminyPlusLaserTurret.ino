@@ -1,11 +1,11 @@
 /* LORD of ROBOTS - LoR_Core_LaserTurret - 202305222115
-  
   Control inputs - LED Indication:
-    PS4 - Rainbow LED
+    PS4 control - Rainbow LED
     none/Stop/standby - Red LED
 
   Drive configurations:
     Mecanum 
+    Standard tank style
 
 */
 #include <PS4Controller.h>
@@ -13,18 +13,14 @@
 #include <ps4_int.h>
 #include <Adafruit_NeoPixel.h>
 
-
 // version control and major control function settings
-String Version = "Base Version : LoR Core Laser turret : 1.0.0";
-bool MecanumDrive_Enabled = true;
+String Version = "Base Version : LoR Core Laser turret : 1.0.1";
 
 // IO Interface Definitions
 #define LED_DataPin 12
 #define LED_COUNT 36
 #define ControllerSelectPin 34
 #define MotorEnablePin 13
-
-
 
 // Motor Pin Definitions
 #define motorPin_M1_A 5
@@ -60,157 +56,14 @@ const int MOTOR_PWM_Channel_B[] = { Motor_M1_B, Motor_M2_B, Motor_M3_B, Motor_M4
 const int PWM_FREQUENCY = 20000;
 const int PWM_RESOLUTION = 8;
 
-// NeoPixel Configurations
-Adafruit_NeoPixel strip(LED_COUNT, LED_DataPin, NEO_GRB + NEO_KHZ800);
-const uint32_t RED = strip.Color(255, 0, 0, 0);
-const uint32_t GREEN = strip.Color(0, 255, 0, 0);
-const uint32_t BLUE = strip.Color(0, 0, 255, 0);
-const uint32_t WHITE = strip.Color(0, 0, 0, 255);
-const uint32_t PURPLE = strip.Color(255, 0, 255, 0);
-const uint32_t CYAN = strip.Color(0, 255, 255, 0);
-const uint32_t YELLOW = strip.Color(255, 255, 0, 0);
 
-
+// Process joystick input and calculate motor speeds - Mecanum control
 // Joystick control variables
 const int DEAD_BAND = 20;
 const float TURN_RATE = 1;
-
-// Motor speed limits and starting speed
-const int MAX_SPEED = 255;
-const int MIN_SPEED = -255;
-const int MIN_STARTING_SPEED = 140;
-const int STOP = 0;
-const int SerialControl_SPEED = 110;
-bool INVERT = false;
-
-// Slew rate for ramping motor speed
-const int SLEW_RATE_MS = 20;
-
-
-// Servo Configurations
-const int servoPin = 22;
-const int ServoPosition_Center = 45;
-const int ServoPWM_FREQUENCY = 50;
-const int SERVO_PWM_Channel = 12;
-const int ServoPWM_RESOLUTION = 12;
-
-
-// Pulse width range in microseconds
-const int minPulseWidth = 1000;
-const int maxPulseWidth = 2000;
-
-// Duty cycle range for SERVO_PWM_Channel
-// Calculate SERVO_PWM_MIN and SERVO_PWM_MAX
-int SERVO_PWM_MIN = minPulseWidth / ((1000000 / ServoPWM_FREQUENCY) / 4095);
-int SERVO_PWM_MAX = maxPulseWidth / ((1000000 / ServoPWM_FREQUENCY) / 4095);
-
-//laser configurations
-const int laserPin = 21;
-
-// Set up pins, LED PWM functionalities and begin PS4 controller, Serial and Serial2 communication
-void setup() {
-  // Set up the pins
-  pinMode(LED_DataPin, OUTPUT);
-  pinMode(ControllerSelectPin, INPUT_PULLUP);
-  pinMode(MotorEnablePin, OUTPUT);
-
-  for (int i = 0; i < 6; i++) {
-    pinMode(motorPins_A[i], OUTPUT);
-    pinMode(motorPins_B[i], OUTPUT);
-    digitalWrite(motorPins_A[i], 0);
-    digitalWrite(motorPins_B[i], 0);
-  }
-
-
-  // output preset bias
-  digitalWrite(LED_DataPin, 0);
-  digitalWrite(MotorEnablePin, 1);
-
-  // configure LED PWM functionalitites
-  for (int i = 0; i < 6; i++) {
-    ledcSetup(MOTOR_PWM_Channel_A[i], PWM_FREQUENCY, PWM_RESOLUTION);
-    ledcSetup(MOTOR_PWM_Channel_B[i], PWM_FREQUENCY, PWM_RESOLUTION);
-    ledcAttachPin(motorPins_A[i], MOTOR_PWM_Channel_A[i]);
-    ledcAttachPin(motorPins_B[i], MOTOR_PWM_Channel_B[i]);
-  }
-
-
-
-  // Neopixels Configuration
-  strip.begin();            // INITIALIZE NeoPixel strip object
-  strip.show();             // Turn OFF all pixels ASAP
-  strip.setBrightness(50);  // Set BRIGHTNESS to about 1/5 (max = 255)
-
-  // Configure LEDC for servo PWM
-  const int ServoPWM_FREQUENCY = 50;
-  const int SERVO_PWM_Channel = 12;
-  ledcSetup(SERVO_PWM_Channel, ServoPWM_FREQUENCY, ServoPWM_RESOLUTION);
-  ledcAttachPin(servoPin, SERVO_PWM_Channel);
-
-// laser setup
-pinMode(laserPin, OUTPUT);
-digitalWrite(laserPin, false);
-
-  // PS4 controller configuration (Target mac address saved on the controller)
-  PS4.begin("xx:xx:xx:xx:xx:xx");  // REPLACE WITH THE MAC ADDRESS ON YOUR CONTROLLER
-  
-
-  // Serial comms configurations (USB for debug messages)
-  Serial.begin(115200);  // USB Serial
-  delay(1500);
-
-  //debug messages
-  delay(500);
-
-  Serial.print("Mecanum Drive: ");
-  if (MecanumDrive_Enabled) Serial.println("Enabled");
-  else Serial.println("Disabled");
-
-  Serial.println("CORE System Ready! " + Version);
-}
-
-void loop() {
-  // Main loop to handle PS4 controller and serial input
-  //PS4 Control
-  if (PS4.isConnected()) {
-    PS4.setLed(0, 255, 0);
-    PS4.sendToController();
-    NeoPixel_Rainbow();                                           // LED Display
-    Motion_Control(PS4.LStickY(), PS4.LStickX(), PS4.RStickX());  // Joystick control
-    delay(5);
-    Servo_Control(PS4.RStickY());
-    delay(5);
-    Laser(); 
-  Motor_Control();
-    //Stop/Standby
-  } else {
-    NeoPixel_SetColour(RED);
-    Motor_STOP();
-  }
- 
-}
-
-// Rainbow pattern for NeoPixel strip
-long firstPixelHue = 0;
-void NeoPixel_Rainbow() {
-  strip.rainbow(firstPixelHue);
-  strip.show();  // Update strip with new contents
-  firstPixelHue += 256;
-  if (firstPixelHue >= 5 * 65536) firstPixelHue = 0;
-}
-
-// Set a specific color for the entire NeoPixel strip
-void NeoPixel_SetColour(uint32_t color) {
-  for (int i = 0; i < strip.numPixels(); i++) {  // For each pixel in strip...
-    strip.setPixelColor(i, color);               //  Set pixel's color (in RAM)
-    strip.show();                                // Update strip with new contents
-  }
-}
-
-// Process joystick input and calculate motor speeds - Mecanum control
+bool MecanumDrive_Enabled = true;
 int Motor_FrontLeft_SetValue, Motor_FrontRight_SetValue, Motor_BackLeft_SetValue, Motor_BackRight_SetValue = 0;
 void Motion_Control(int LY_Axis, int LX_Axis, int RX_Axis) {
-
   int FrontLeft_TargetValue, FrontRight_TargetValue, BackLeft_TargetValue, BackRight_TargetValue = 0;
   int ForwardBackward_Axis = LY_Axis;
   int StrafeLeftRight_Axis = LX_Axis;
@@ -249,6 +102,8 @@ void Motion_Control(int LY_Axis, int LX_Axis, int RX_Axis) {
 }
 
 // Function to handle slew rate for motor speed ramping
+// Slew rate for ramping motor speed
+const int SLEW_RATE_MS = 20;
 int SlewRateFunction(int Input_Target, int Input_Current) {
   int speedDiff = Input_Target - Input_Current;
   if (speedDiff > 0) Input_Current += min(speedDiff, SLEW_RATE_MS);
@@ -257,22 +112,14 @@ int SlewRateFunction(int Input_Target, int Input_Current) {
   return Input_Current;
 }
 
-void Motor_Control() {
-  Set_Motor_Output(Motor_FrontLeft_SetValue, Motor_M1_A, Motor_M1_B);
-  Set_Motor_Output(Motor_BackLeft_SetValue, Motor_M2_A, Motor_M2_B);
-  Set_Motor_Output(Motor_FrontRight_SetValue, Motor_M5_A, Motor_M5_B);
-  Set_Motor_Output(Motor_BackRight_SetValue, Motor_M6_A, Motor_M6_B);
-}
-
-void Motor_STOP() {
-  Set_Motor_Output(STOP, Motor_M1_A, Motor_M1_B);
-  Set_Motor_Output(STOP, Motor_M2_A, Motor_M2_B);
-  Set_Motor_Output(STOP, Motor_M5_A, Motor_M5_B);
-  Set_Motor_Output(STOP, Motor_M6_A, Motor_M6_B);
-}
-
-
 // Function to control motor output based on input values
+// Motor speed limits and starting speed
+const int MAX_SPEED = 255;
+const int MIN_SPEED = -255;
+const int MIN_STARTING_SPEED = 140;
+const int STOP = 0;
+const int SerialControl_SPEED = 110;
+bool INVERT = false;
 void Set_Motor_Output(int Output, int Motor_ChA, int Motor_ChB) {
   if (INVERT) Output = -Output;
 
@@ -294,19 +141,176 @@ void Set_Motor_Output(int Output, int Motor_ChA, int Motor_ChB) {
   ledcWrite(Motor_ChB, B);
 }
 
-
-// Function to control the servo position using LEDC library
-void Servo_Control(int joystickValue) {
-  Serial.print("joystickValue: " + String(joystickValue));
-
-  // Convert the servo position to a corresponding PWM duty cycle
-  int pwmDuty = map(joystickValue, -127, 127, SERVO_PWM_MIN, SERVO_PWM_MAX);  // Map joystick value to servo position (0-180 degrees)
-
-  // Set the PWM duty cycle for the servo
-  ledcWrite(SERVO_PWM_Channel, pwmDuty);
+void Motor_Control() {
+  Set_Motor_Output(Motor_FrontLeft_SetValue, Motor_M1_A, Motor_M1_B);
+  Set_Motor_Output(Motor_BackLeft_SetValue, Motor_M2_A, Motor_M2_B);
+  Set_Motor_Output(Motor_FrontRight_SetValue, Motor_M5_A, Motor_M5_B);
+  Set_Motor_Output(Motor_BackRight_SetValue, Motor_M6_A, Motor_M6_B);
 }
 
-void Laser(){
+void Motor_STOP() {
+  Set_Motor_Output(STOP, Motor_M1_A, Motor_M1_B);
+  Set_Motor_Output(STOP, Motor_M2_A, Motor_M2_B);
+  Set_Motor_Output(STOP, Motor_M5_A, Motor_M5_B);
+  Set_Motor_Output(STOP, Motor_M6_A, Motor_M6_B);
+}
+
+
+// Function to control the servo position using LEDC library
+// Servo Configurations
+const int servoPin = 22;
+const int ServoPosition_Center = 45;
+const int ServoPWM_FREQUENCY = 50;
+const int SERVO_PWM_Channel = 12;
+const int ServoPWM_RESOLUTION = 12;
+const int minPulseWidth = 1000;// Pulse width range in microseconds
+const int maxPulseWidth = 2000;
+int SERVO_PWM_MIN = minPulseWidth / ((1000000 / ServoPWM_FREQUENCY) / 4095);// Duty cycle range for SERVO_PWM_Channel - Calculate SERVO_PWM_MIN and SERVO_PWM_MAX
+int SERVO_PWM_MAX = maxPulseWidth / ((1000000 / ServoPWM_FREQUENCY) / 4095);
+void Servo_Control(int joystickValue) {
+  Serial.print("joystickValue: " + String(joystickValue));  // Convert the servo position to a corresponding PWM duty cycle
+  int pwmDuty = map(joystickValue, -127, 127, SERVO_PWM_MIN, SERVO_PWM_MAX);  // Map joystick value to servo position (0-180 degrees)
+  ledcWrite(SERVO_PWM_Channel, pwmDuty); // Set the PWM duty cycle for the servo
+}
+
+//laser configurations
+const int laserPin = 21;
+void Laser() {
   if (PS4.R2()) digitalWrite(laserPin, true);
   else digitalWrite(laserPin, false);
+}
+
+// NeoPixel Configurations
+Adafruit_NeoPixel strip(LED_COUNT, LED_DataPin, NEO_GRB + NEO_KHZ800);
+const uint32_t RED = strip.Color(255, 0, 0, 0);
+const uint32_t GREEN = strip.Color(0, 255, 0, 0);
+const uint32_t BLUE = strip.Color(0, 0, 255, 0);
+const uint32_t WHITE = strip.Color(0, 0, 0, 255);
+const uint32_t PURPLE = strip.Color(255, 0, 255, 0);
+const uint32_t CYAN = strip.Color(0, 255, 255, 0);
+const uint32_t YELLOW = strip.Color(255, 255, 0, 0);
+
+// Set a specific color for the entire NeoPixel strip
+void NeoPixel_SetColour(uint32_t color) {
+  for (int i = 0; i < strip.numPixels(); i++) {  // For each pixel in strip...
+    strip.setPixelColor(i, color);               //  Set pixel's color (in RAM)
+    strip.show();                                // Update strip with new contents
+  }
+}
+
+// Rainbow pattern for NeoPixel strip
+long firstPixelHue = 0;
+void NeoPixel_Rainbow() {
+  strip.rainbow(firstPixelHue);
+  strip.show();  // Update strip with new contents
+  firstPixelHue += 256;
+  if (firstPixelHue >= 5 * 65536) firstPixelHue = 0;
+}
+
+// check battery status of the ps4 controller
+long DelaySerialPrint = 0;
+void PS4controller_BatteryCheck() {
+  if (millis()>DelaySerialPrint){
+    Serial.printf("Controller Battery Level : %d\n", PS4.Battery());
+    DelaySerialPrint = millis()+1000;
+  }
+  if(PS4.Charging())PS4.setFlashRate(1000, 1000);
+  else PS4.setFlashRate(0, 0);
+  if (PS4.Battery() > 5) PS4.setLed(0, 255, 0);
+  else if (PS4.Battery() > 2) PS4.setLed(255, 255, 0);
+  else {
+    PS4.setFlashRate(500, 500);
+    PS4.setLed(255, 0, 0);
+    PS4.setRumble(50, 50);
+  }
+  PS4.sendToController();
+}
+
+// controller rumble control for connecting
+bool Connected_Rumble = false;
+void Rumble_Once() {
+  if (Connected_Rumble) return;
+  Connected_Rumble = true;
+  PS4.setRumble(255, 255);
+  PS4.sendToController();
+  delay(500);
+  PS4.setRumble(0, 0);
+  PS4.sendToController();
+}
+
+// Set up pins, LED PWM functionalities and begin PS4 controller, Serial and Serial2 communication
+void setup() {
+  // Set up the pins
+  pinMode(LED_DataPin, OUTPUT);
+  pinMode(ControllerSelectPin, INPUT_PULLUP);
+  pinMode(MotorEnablePin, OUTPUT);
+
+  for (int i = 0; i < 6; i++) {
+    pinMode(motorPins_A[i], OUTPUT);
+    pinMode(motorPins_B[i], OUTPUT);
+    digitalWrite(motorPins_A[i], 0);
+    digitalWrite(motorPins_B[i], 0);
+  }
+
+  // output preset bias
+  digitalWrite(LED_DataPin, 0);
+  digitalWrite(MotorEnablePin, 1);
+
+  // configure LED PWM functionalitites
+  for (int i = 0; i < 6; i++) {
+    ledcSetup(MOTOR_PWM_Channel_A[i], PWM_FREQUENCY, PWM_RESOLUTION);
+    ledcSetup(MOTOR_PWM_Channel_B[i], PWM_FREQUENCY, PWM_RESOLUTION);
+    ledcAttachPin(motorPins_A[i], MOTOR_PWM_Channel_A[i]);
+    ledcAttachPin(motorPins_B[i], MOTOR_PWM_Channel_B[i]);
+  }
+
+  // Neopixels Configuration
+  strip.begin();            // INITIALIZE NeoPixel strip object
+  strip.show();             // Turn OFF all pixels ASAP
+  strip.setBrightness(50);  // Set BRIGHTNESS to about 1/5 (max = 255)
+
+  // Configure LEDC for servo PWM
+  const int ServoPWM_FREQUENCY = 50;
+  const int SERVO_PWM_Channel = 12;
+  ledcSetup(SERVO_PWM_Channel, ServoPWM_FREQUENCY, ServoPWM_RESOLUTION);
+  ledcAttachPin(servoPin, SERVO_PWM_Channel);
+
+  // laser setup
+  pinMode(laserPin, OUTPUT);
+  digitalWrite(laserPin, false);
+
+ // PS4 controller configuration (Target mac address saved on the controller)
+  PS4.begin("xx:xx:xx:xx:xx:xx");  // REPLACE WITH THE MAC ADDRESS FROM YOUR PS4 CONTROLLER
+ 
+  // Serial comms configurations (USB for debug messages)
+  Serial.begin(115200);  // USB Serial
+  delay(2000);
+
+  Serial.print("Drive Style: ");
+  if (MecanumDrive_Enabled) Serial.println("MECANUM");
+  else Serial.println("STANDARD");
+
+  Serial.println("CORE System Ready! " + Version);
+}
+
+void loop() {
+  // Main loop to handle PS4 controller and serial input
+  //PS4 Control
+  if (PS4.isConnected()) {
+    Rumble_Once();
+    PS4controller_BatteryCheck();
+    NeoPixel_Rainbow();                                           // LED Display
+    Motion_Control(PS4.LStickY(), PS4.LStickX(), PS4.RStickX());  // Joystick control
+    delay(5);
+    Servo_Control(PS4.RStickY());
+    delay(5);
+    Laser();
+    Motor_Control();
+
+    //Stop/Standby
+  } else {
+    NeoPixel_SetColour(RED);
+    Motor_STOP();
+     Connected_Rumble = false;
+  }
 }
