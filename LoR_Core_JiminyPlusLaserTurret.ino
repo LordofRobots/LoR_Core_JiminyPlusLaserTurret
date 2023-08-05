@@ -14,11 +14,11 @@
 #include <Adafruit_NeoPixel.h>
 
 // version control and major control function settings
-String Version = "Base Version : LoR Core Laser turret : 1.0.1";
+String Version = "Base Version : LoR Core Laser turret : 1.2.1";
 
 // IO Interface Definitions
 #define LED_DataPin 12
-#define LED_COUNT 36
+#define LED_COUNT 9
 #define ControllerSelectPin 34
 #define MotorEnablePin 13
 
@@ -163,20 +163,20 @@ const int ServoPosition_Center = 45;
 const int ServoPWM_FREQUENCY = 50;
 const int SERVO_PWM_Channel = 12;
 const int ServoPWM_RESOLUTION = 12;
-const int minPulseWidth = 1000;// Pulse width range in microseconds
+const int minPulseWidth = 1000;  // Pulse width range in microseconds
 const int maxPulseWidth = 2000;
-int SERVO_PWM_MIN = minPulseWidth / ((1000000 / ServoPWM_FREQUENCY) / 4095);// Duty cycle range for SERVO_PWM_Channel - Calculate SERVO_PWM_MIN and SERVO_PWM_MAX
+int SERVO_PWM_MIN = minPulseWidth / ((1000000 / ServoPWM_FREQUENCY) / 4095);  // Duty cycle range for SERVO_PWM_Channel - Calculate SERVO_PWM_MIN and SERVO_PWM_MAX
 int SERVO_PWM_MAX = maxPulseWidth / ((1000000 / ServoPWM_FREQUENCY) / 4095);
 void Servo_Control(int joystickValue) {
-  Serial.print("joystickValue: " + String(joystickValue));  // Convert the servo position to a corresponding PWM duty cycle
+  Serial.print("joystickValue: " + String(joystickValue));                    // Convert the servo position to a corresponding PWM duty cycle
   int pwmDuty = map(joystickValue, -127, 127, SERVO_PWM_MIN, SERVO_PWM_MAX);  // Map joystick value to servo position (0-180 degrees)
-  ledcWrite(SERVO_PWM_Channel, pwmDuty); // Set the PWM duty cycle for the servo
+  ledcWrite(SERVO_PWM_Channel, pwmDuty);                                      // Set the PWM duty cycle for the servo
 }
 
 //laser configurations
 const int laserPin = 21;
-void Laser() {
-  if (PS4.R2()) digitalWrite(laserPin, true);
+void Laser(int LaserState) {
+  if (LaserState) digitalWrite(laserPin, true);
   else digitalWrite(laserPin, false);
 }
 
@@ -185,36 +185,66 @@ Adafruit_NeoPixel strip(LED_COUNT, LED_DataPin, NEO_GRB + NEO_KHZ800);
 const uint32_t RED = strip.Color(255, 0, 0, 0);
 const uint32_t GREEN = strip.Color(0, 255, 0, 0);
 const uint32_t BLUE = strip.Color(0, 0, 255, 0);
-const uint32_t WHITE = strip.Color(0, 0, 0, 255);
+const uint32_t WHITE = strip.Color(255, 255, 255, 255);
 const uint32_t PURPLE = strip.Color(255, 0, 255, 0);
 const uint32_t CYAN = strip.Color(0, 255, 255, 0);
 const uint32_t YELLOW = strip.Color(255, 255, 0, 0);
 
 // Set a specific color for the entire NeoPixel strip
 void NeoPixel_SetColour(uint32_t color) {
-  for (int i = 0; i < strip.numPixels(); i++) {  // For each pixel in strip...
-    strip.setPixelColor(i, color);               //  Set pixel's color (in RAM)
-    strip.show();                                // Update strip with new contents
+  for (int i = 0; i < strip.numPixels() - 1; i++) {  // For each pixel in strip...
+    strip.setPixelColor(i, color);                   //  Set pixel's color (in RAM)
+    strip.show();                                    // Update strip with new contents
   }
+}
+void NeoPixel_SetPixel(int PixelNum, uint32_t color) {
+  strip.setPixelColor(PixelNum, color);  //  Set pixel's color (in RAM)
+  strip.show();                          // Update strip with new contents
 }
 
 // Rainbow pattern for NeoPixel strip
 long firstPixelHue = 0;
 void NeoPixel_Rainbow() {
   strip.rainbow(firstPixelHue);
-  strip.show();  // Update strip with new contents
   firstPixelHue += 256;
   if (firstPixelHue >= 5 * 65536) firstPixelHue = 0;
 }
 
+//Contol last pixel in string as Headlights
+uint32_t Off = 0;
+uint32_t Colour = Off;
+bool ToggleModeState = 0;
+long HoldTime = 4000;
+void LED_Functions(bool Green, bool Red, bool Blue, bool White) {
+  NeoPixel_Rainbow();
+
+  if (Red || Green || Blue || White) {
+    if (millis() > HoldTime) {
+      ToggleModeState = !ToggleModeState;
+      NeoPixel_SetPixel(8, Off);
+      NeoPixel_SetPixel(9, Off);
+      delay(100);
+      HoldTime = millis() + 1000;
+    }
+  } else HoldTime = millis() + 1000;
+
+  if (Green) Colour = GREEN;
+  else if (Red) Colour = RED;
+  else if (Blue) Colour = BLUE;
+  else if (White) Colour = WHITE;
+  else if (!ToggleModeState) Colour = Off;
+
+  NeoPixel_SetPixel(8, Colour);
+  NeoPixel_SetPixel(9, Colour);
+}
 // check battery status of the ps4 controller
 long DelaySerialPrint = 0;
 void PS4controller_BatteryCheck() {
-  if (millis()>DelaySerialPrint){
+  if (millis() > DelaySerialPrint) {
     Serial.printf("Controller Battery Level : %d\n", PS4.Battery());
-    DelaySerialPrint = millis()+1000;
+    DelaySerialPrint = millis() + 1000;
   }
-  if(PS4.Charging())PS4.setFlashRate(1000, 1000);
+  if (PS4.Charging()) PS4.setFlashRate(1000, 1000);
   else PS4.setFlashRate(0, 0);
   if (PS4.Battery() > 5) PS4.setLed(0, 255, 0);
   else if (PS4.Battery() > 2) PS4.setLed(255, 255, 0);
@@ -238,6 +268,23 @@ void Rumble_Once() {
   PS4.sendToController();
 }
 
+// Tones created in the motors. Cycle through each motor.
+void Start_Tone() {
+  for (int i = 0; i < 6; i++) {
+    long ToneTime = millis() + 200;
+    bool state = 0;
+    while (millis() < ToneTime) {
+      digitalWrite(motorPins_A[i], state);
+      digitalWrite(motorPins_B[i], !state);
+      state = !state;
+      long WaitTime = micros()+(100*(i+1));
+      while(micros()<WaitTime){}
+    }
+    digitalWrite(motorPins_A[i], 0);
+    digitalWrite(motorPins_B[i], 0);
+    delay(50);
+  }
+}
 // Set up pins, LED PWM functionalities and begin PS4 controller, Serial and Serial2 communication
 void setup() {
   // Set up the pins
@@ -256,6 +303,15 @@ void setup() {
   digitalWrite(LED_DataPin, 0);
   digitalWrite(MotorEnablePin, 1);
 
+  // Neopixels Configuration
+  strip.begin();            // INITIALIZE NeoPixel strip object
+  strip.show();             // Turn OFF all pixels ASAP
+  strip.setBrightness(50);  // Set BRIGHTNESS to about 1/2 (max = 255)
+
+  // Motor test tones 
+  NeoPixel_SetColour(BLUE);
+  Start_Tone();
+
   // configure LED PWM functionalitites
   for (int i = 0; i < 6; i++) {
     ledcSetup(MOTOR_PWM_Channel_A[i], PWM_FREQUENCY, PWM_RESOLUTION);
@@ -263,11 +319,6 @@ void setup() {
     ledcAttachPin(motorPins_A[i], MOTOR_PWM_Channel_A[i]);
     ledcAttachPin(motorPins_B[i], MOTOR_PWM_Channel_B[i]);
   }
-
-  // Neopixels Configuration
-  strip.begin();            // INITIALIZE NeoPixel strip object
-  strip.show();             // Turn OFF all pixels ASAP
-  strip.setBrightness(50);  // Set BRIGHTNESS to about 1/5 (max = 255)
 
   // Configure LEDC for servo PWM
   const int ServoPWM_FREQUENCY = 50;
@@ -278,19 +329,24 @@ void setup() {
   // laser setup
   pinMode(laserPin, OUTPUT);
   digitalWrite(laserPin, false);
+  NeoPixel_SetColour(PURPLE);
 
- // PS4 controller configuration (Target mac address saved on the controller)
-  PS4.begin("xx:xx:xx:xx:xx:xx");  // REPLACE WITH THE MAC ADDRESS FROM YOUR PS4 CONTROLLER
- 
+  // PS4 controller configuration (Target mac address saved on the controller)
+  PS4.begin("e8:9e:b4:fc:b5:a4");  // REPLACE WITH THE MAC ADDRESS FROM YOUR PS4 CONTROLLER
+  NeoPixel_SetColour(YELLOW);
+
   // Serial comms configurations (USB for debug messages)
   Serial.begin(115200);  // USB Serial
+  NeoPixel_SetColour(GREEN);
   delay(2000);
 
   Serial.print("Drive Style: ");
   if (MecanumDrive_Enabled) Serial.println("MECANUM");
   else Serial.println("STANDARD");
+  NeoPixel_SetColour(CYAN);
 
   Serial.println("CORE System Ready! " + Version);
+  NeoPixel_SetColour(WHITE);
 }
 
 void loop() {
@@ -299,18 +355,18 @@ void loop() {
   if (PS4.isConnected()) {
     Rumble_Once();
     PS4controller_BatteryCheck();
-    NeoPixel_Rainbow();                                           // LED Display
+    LED_Functions(PS4.Triangle(), PS4.Circle(), PS4.Cross(), PS4.Square());
     Motion_Control(PS4.LStickY(), PS4.LStickX(), PS4.RStickX());  // Joystick control
     delay(5);
     Servo_Control(PS4.RStickY());
     delay(5);
-    Laser();
+    Laser(PS4.R2());
     Motor_Control();
 
     //Stop/Standby
   } else {
     NeoPixel_SetColour(RED);
     Motor_STOP();
-     Connected_Rumble = false;
+    Connected_Rumble = false;
   }
 }
