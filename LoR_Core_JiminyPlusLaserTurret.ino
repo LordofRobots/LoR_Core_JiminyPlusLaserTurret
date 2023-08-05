@@ -233,10 +233,10 @@ void LED_Functions(bool Green, bool Red, bool Blue, bool White) {
   else if (Blue) Colour = BLUE;
   else if (White) Colour = WHITE;
   else if (!ToggleModeState) Colour = Off;
-
   NeoPixel_SetPixel(8, Colour);
   NeoPixel_SetPixel(9, Colour);
 }
+
 // check battery status of the ps4 controller
 long DelaySerialPrint = 0;
 void PS4controller_BatteryCheck() {
@@ -285,6 +285,7 @@ void Start_Tone() {
     delay(50);
   }
 }
+
 // Set up pins, LED PWM functionalities and begin PS4 controller, Serial and Serial2 communication
 void setup() {
   // Set up the pins
